@@ -452,9 +452,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                      WHERE worker_id = ? AND attendance_date = ?");
                 $stmt->execute([$worker_id, $attendance_date]);
                 
-                if ($stmt->fetch()) {
-                    http_response_code(400);
-                    jsonError('Attendance already marked for this worker today');
+                if ($stmt->rowCount() > 0) {
+                    http_response_code(409); // Conflict
+                    jsonError('Attendance already marked for this worker on this date.');
                 }
                 
                 // Calculate hours worked with enhanced calculator

@@ -599,7 +599,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Prepare daily schedule check
                     $dailyCheckStmt = $db->prepare(
-                        "SELECT is_rest_day, start_time FROM daily_schedules WHERE worker_id = ? AND schedule_date = ? AND is_active = 1 LIMIT 1"
+                        "SELECT is_rest_day, is_on_leave, start_time FROM daily_schedules WHERE worker_id = ? AND schedule_date = ? AND is_active = 1 LIMIT 1"
                     );
 
                     // Determine date range
@@ -626,8 +626,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $dailyCheckStmt->closeCursor();
                         
                         if ($dailyEntry) {
-                            // Daily override exists: scheduled only if NOT rest day
-                            $isScheduled = !$dailyEntry['is_rest_day'];
+                            // Daily override exists: scheduled only if NOT rest day or on leave
+                            $isScheduled = !$dailyEntry['is_rest_day'] && empty($dailyEntry['is_on_leave']);
                         } else {
                             // Fall back to weekly template
                             $isScheduled = in_array($dayName, $scheduledDays);
@@ -692,6 +692,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                          AND ds.schedule_date = a.attendance_date
                                          AND ds.is_active = 1
                                          AND ds.is_rest_day = 0
+                                         AND ds.is_on_leave = 0
+                                         AND ds.is_on_leave = 0
                                      LEFT JOIN schedules s ON s.worker_id = a.worker_id
                                          AND s.day_of_week = {$day_of_week_expr}
                                          AND s.is_active = 1
@@ -866,6 +868,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                          AND ds.schedule_date = a.attendance_date
                                          AND ds.is_active = 1
                                          AND ds.is_rest_day = 0
+                                         AND ds.is_on_leave = 0
                                      LEFT JOIN schedules s ON s.worker_id = a.worker_id
                                          AND s.day_of_week = {$day_of_week_expr}
                                          AND s.is_active = 1

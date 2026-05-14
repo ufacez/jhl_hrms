@@ -224,7 +224,7 @@ if ($selected_project) {
                             LEFT JOIN work_types wt ON w.work_type_id = wt.work_type_id
                             LEFT JOIN worker_classifications wct ON wt.classification_id = wct.classification_id
                             LEFT JOIN attendance a ON a.worker_id = w.worker_id AND a.attendance_date = ?
-                            LEFT JOIN daily_schedules ds ON ds.worker_id = w.worker_id AND ds.schedule_date = ? AND ds.is_active = 1 AND ds.is_rest_day = 0
+                            LEFT JOIN daily_schedules ds ON ds.worker_id = w.worker_id AND ds.schedule_date = ? AND ds.is_active = 1 AND ds.is_rest_day = 0 AND ds.is_on_leave = 0
                             LEFT JOIN schedules sch ON sch.worker_id = w.worker_id AND sch.day_of_week = LOWER(DAYNAME(?)) AND sch.is_active = 1 AND ds.daily_schedule_id IS NULL
                             WHERE w.employment_status = 'active' AND w.is_archived = FALSE
                             ORDER BY w.first_name, w.last_name");

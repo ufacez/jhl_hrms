@@ -72,7 +72,7 @@ class AttendanceCalculator {
         try {
             // 1) Check daily_schedules first (per-date override)
             $stmt = $this->pdo->prepare("
-                SELECT daily_schedule_id as schedule_id, start_time, end_time, is_active, is_rest_day,
+                                SELECT daily_schedule_id as schedule_id, start_time, end_time, is_active, is_rest_day, is_on_leave,
                        'daily' as source
                 FROM daily_schedules 
                 WHERE worker_id = ? 
@@ -84,8 +84,8 @@ class AttendanceCalculator {
             $daily = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($daily) {
-                // If it's marked as a rest day, return null (no schedule)
-                if ($daily['is_rest_day']) {
+                // If it's marked as a rest day or on leave, return null (no schedule)
+                if (!empty($daily['is_rest_day']) || !empty($daily['is_on_leave'])) {
                     return null;
                 }
                 return $daily;

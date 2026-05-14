@@ -27,7 +27,8 @@ try {
     $sql = "SELECT a.*, 
                 COALESCE(ds.start_time, s.start_time) as sched_start,
                 COALESCE(ds.end_time, s.end_time) as sched_end,
-                CASE WHEN ds.is_rest_day = 1 THEN 1 ELSE 0 END as is_rest_day
+                CASE WHEN ds.is_rest_day = 1 THEN 1 ELSE 0 END as is_rest_day,
+                CASE WHEN ds.is_on_leave = 1 THEN 1 ELSE 0 END as is_on_leave
             FROM attendance a
             LEFT JOIN daily_schedules ds ON ds.worker_id = a.worker_id 
                 AND ds.schedule_date = a.attendance_date AND ds.is_active = 1
@@ -221,6 +222,8 @@ try {
                                         <td class="time-cell">
                                             <?php if (!empty($record['sched_start']) && !empty($record['sched_end'])): ?>
                                                 <span style="font-size:12px;"><?php echo date('g:iA', strtotime($record['sched_start'])); ?> - <?php echo date('g:iA', strtotime($record['sched_end'])); ?></span>
+                                            <?php elseif (!empty($record['is_on_leave']) && $record['is_on_leave']): ?>
+                                                <span style="color:#ef6c00;font-size:12px;font-weight:600;">On Leave</span>
                                             <?php elseif (!empty($record['is_rest_day']) && $record['is_rest_day']): ?>
                                                 <span style="color:#e91e63;font-size:12px;font-weight:600;">Rest Day</span>
                                             <?php else: ?>

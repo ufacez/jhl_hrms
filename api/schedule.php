@@ -68,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $start_time = isset($_POST['start_time']) ? sanitizeString($_POST['start_time']) : null;
                 $end_time = isset($_POST['end_time']) ? sanitizeString($_POST['end_time']) : null;
                 $is_rest_day = isset($_POST['is_rest_day']) ? intval($_POST['is_rest_day']) : 0;
+                $is_on_leave = isset($_POST['is_on_leave']) ? intval($_POST['is_on_leave']) : 0;
                 $notes = isset($_POST['notes']) ? sanitizeString($_POST['notes']) : null;
                 
                 if ($worker_id <= 0 || empty($schedule_date)) {
@@ -81,8 +82,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     jsonError('Invalid date format. Use YYYY-MM-DD');
                 }
                 
-                // If not a rest day, times are required
-                if (!$is_rest_day && (empty($start_time) || empty($end_time))) {
+                if ($is_on_leave) {
+                    $is_rest_day = 0;
+                    $start_time = null;
+                    $end_time = null;
+                } elseif ($is_rest_day) {
+                    $is_on_leave = 0;
+                    $start_time = null;
+                    $end_time = null;
+                }
+
+                // If not a rest day or leave, times are required
+                if (!$is_rest_day && !$is_on_leave && (empty($start_time) || empty($end_time))) {
                     http_response_code(400);
                     jsonError('Start time and end time are required for work days');
                 }
@@ -95,36 +106,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($existing) {
                     // Update existing
                     $stmt = $db->prepare("UPDATE daily_schedules 
-                                         SET start_time = ?, end_time = ?, is_rest_day = ?, 
+                                         SET start_time = ?, end_time = ?, is_rest_day = ?, is_on_leave = ?,
                                              is_active = 1, notes = ?, updated_at = NOW()
                                          WHERE daily_schedule_id = ?");
                     $stmt->execute([
-                        $is_rest_day ? null : $start_time, 
-                        $is_rest_day ? null : $end_time, 
-                        $is_rest_day, $notes, 
+                        ($is_rest_day || $is_on_leave) ? null : $start_time, 
+                        ($is_rest_day || $is_on_leave) ? null : $end_time, 
+                        $is_rest_day, $is_on_leave, $notes, 
                         $existing['daily_schedule_id']
                     ]);
+
+                    $statusLabel = $is_on_leave ? 'On Leave' : ($is_rest_day ? 'Rest Day' : 'Work Day');
                     
                     logActivity($db, $user_id, 'update_daily_schedule', 'daily_schedules', $existing['daily_schedule_id'],
-                               "Updated daily schedule for worker {$worker_id} on {$schedule_date}");
+                               "Updated daily schedule ({$statusLabel}) for worker {$worker_id} on {$schedule_date}");
                     
                     jsonSuccess('Daily schedule updated', ['daily_schedule_id' => $existing['daily_schedule_id']]);
                 } else {
                     // Insert new
                     $stmt = $db->prepare("INSERT INTO daily_schedules 
-                                         (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by) 
-                                         VALUES (?, ?, ?, ?, ?, 1, ?, ?)");
+                                         (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by) 
+                                         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)");
                     $stmt->execute([
                         $worker_id, $schedule_date,
-                        $is_rest_day ? null : $start_time, 
-                        $is_rest_day ? null : $end_time, 
-                        $is_rest_day, $notes, $user_id
+                        ($is_rest_day || $is_on_leave) ? null : $start_time, 
+                        ($is_rest_day || $is_on_leave) ? null : $end_time, 
+                        $is_rest_day, $is_on_leave, $notes, $user_id
                     ]);
                     
                     $new_id = $db->lastInsertId();
                     
+                    $statusLabel = $is_on_leave ? 'On Leave' : ($is_rest_day ? 'Rest Day' : 'Work Day');
+
                     logActivity($db, $user_id, 'create_daily_schedule', 'daily_schedules', $new_id,
-                               "Created daily schedule for worker {$worker_id} on {$schedule_date}");
+                               "Created daily schedule ({$statusLabel}) for worker {$worker_id} on {$schedule_date}");
                     
                     http_response_code(201);
                     jsonSuccess('Daily schedule created', ['daily_schedule_id' => $new_id]);
@@ -148,9 +163,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $start_time = isset($_POST['start_time']) ? sanitizeString($_POST['start_time']) : null;
                 $end_time = isset($_POST['end_time']) ? sanitizeString($_POST['end_time']) : null;
                 $is_rest_day = isset($_POST['is_rest_day']) ? intval($_POST['is_rest_day']) : 0;
+                $is_on_leave = isset($_POST['is_on_leave']) ? intval($_POST['is_on_leave']) : 0;
                 $notes = isset($_POST['notes']) ? sanitizeString($_POST['notes']) : null;
-                
-                if (!$is_rest_day && (empty($start_time) || empty($end_time))) {
+
+                if ($is_on_leave) {
+                    $is_rest_day = 0;
+                    $start_time = null;
+                    $end_time = null;
+                } elseif ($is_rest_day) {
+                    $is_on_leave = 0;
+                    $start_time = null;
+                    $end_time = null;
+                }
+
+                if (!$is_rest_day && !$is_on_leave && (empty($start_time) || empty($end_time))) {
                     http_response_code(400);
                     jsonError('Start time and end time are required for work days');
                 }
@@ -169,32 +195,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         if ($existing) {
                             $stmt = $db->prepare("UPDATE daily_schedules 
-                                                 SET start_time = ?, end_time = ?, is_rest_day = ?, 
+                                                 SET start_time = ?, end_time = ?, is_rest_day = ?, is_on_leave = ?,
                                                      is_active = 1, notes = ?, updated_at = NOW()
                                                  WHERE daily_schedule_id = ?");
                             $stmt->execute([
-                                $is_rest_day ? null : $start_time, 
-                                $is_rest_day ? null : $end_time, 
-                                $is_rest_day, $notes, 
+                                ($is_rest_day || $is_on_leave) ? null : $start_time, 
+                                ($is_rest_day || $is_on_leave) ? null : $end_time, 
+                                $is_rest_day, $is_on_leave, $notes, 
                                 $existing['daily_schedule_id']
                             ]);
                         } else {
                             $stmt = $db->prepare("INSERT INTO daily_schedules 
-                                                 (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by) 
-                                                 VALUES (?, ?, ?, ?, ?, 1, ?, ?)");
+                                                 (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by) 
+                                                 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)");
                             $stmt->execute([
                                 $wid, $sdate,
-                                $is_rest_day ? null : $start_time, 
-                                $is_rest_day ? null : $end_time, 
-                                $is_rest_day, $notes, $user_id
+                                ($is_rest_day || $is_on_leave) ? null : $start_time, 
+                                ($is_rest_day || $is_on_leave) ? null : $end_time, 
+                                $is_rest_day, $is_on_leave, $notes, $user_id
                             ]);
                         }
                         $saved++;
                     }
                     $db->commit();
                     
+                    $statusLabel = $is_on_leave ? 'On Leave' : ($is_rest_day ? 'Rest Day' : 'Work Day');
+
                     logActivity($db, $user_id, 'bulk_save_daily_schedule', 'daily_schedules', 0,
-                               "Bulk saved {$saved} daily schedules");
+                               "Bulk saved {$saved} daily schedules ({$statusLabel})");
                     
                     jsonSuccess("Saved {$saved} schedule" . ($saved !== 1 ? 's' : ''), ['saved' => $saved]);
                 } catch (Exception $e) {
@@ -296,15 +324,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // Has a weekly template for this day
                             if ($existing) {
                                 $stmt = $db->prepare("UPDATE daily_schedules 
-                                                     SET start_time = ?, end_time = ?, is_rest_day = 0, is_active = 1, 
+                                                     SET start_time = ?, end_time = ?, is_rest_day = 0, is_on_leave = 0, is_active = 1, 
                                                          notes = 'Generated from weekly template', updated_at = NOW()
                                                      WHERE daily_schedule_id = ?");
                                 $stmt->execute([$template['start_time'], $template['end_time'], $existing['daily_schedule_id']]);
                                 $updated++;
                             } else {
                                 $stmt = $db->prepare("INSERT INTO daily_schedules 
-                                                     (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by)
-                                                     VALUES (?, ?, ?, ?, 0, 1, 'Generated from weekly template', ?)");
+                                                     (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by)
+                                                     VALUES (?, ?, ?, ?, 0, 0, 1, 'Generated from weekly template', ?)");
                                 $stmt->execute([$worker_id, $date_str, $template['start_time'], $template['end_time'], $user_id]);
                                 $created++;
                             }
@@ -312,15 +340,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // No template = rest day
                             if ($existing) {
                                 $stmt = $db->prepare("UPDATE daily_schedules 
-                                                     SET start_time = NULL, end_time = NULL, is_rest_day = 1, is_active = 1,
+                                                     SET start_time = NULL, end_time = NULL, is_rest_day = 1, is_on_leave = 0, is_active = 1,
                                                          notes = 'Rest day (no weekly template)', updated_at = NOW()
                                                      WHERE daily_schedule_id = ?");
                                 $stmt->execute([$existing['daily_schedule_id']]);
                                 $updated++;
                             } else {
                                 $stmt = $db->prepare("INSERT INTO daily_schedules 
-                                                     (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by)
-                                                     VALUES (?, ?, NULL, NULL, 1, 1, 'Rest day (no weekly template)', ?)");
+                                                     (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by)
+                                                     VALUES (?, ?, NULL, NULL, 1, 0, 1, 'Rest day (no weekly template)', ?)");
                                 $stmt->execute([$worker_id, $date_str, $user_id]);
                                 $created++;
                             }
@@ -398,21 +426,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                             if ($template) {
                                 if ($existing) {
-                                    $stmt = $db->prepare("UPDATE daily_schedules SET start_time=?, end_time=?, is_rest_day=0, is_active=1, notes='Generated from template', updated_at=NOW() WHERE daily_schedule_id=?");
+                                    $stmt = $db->prepare("UPDATE daily_schedules SET start_time=?, end_time=?, is_rest_day=0, is_on_leave=0, is_active=1, notes='Generated from template', updated_at=NOW() WHERE daily_schedule_id=?");
                                     $stmt->execute([$template['start_time'], $template['end_time'], $existing['daily_schedule_id']]);
                                     $total_updated++;
                                 } else {
-                                    $stmt = $db->prepare("INSERT INTO daily_schedules (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by) VALUES (?,?,?,?,0,1,'Generated from template',?)");
+                                    $stmt = $db->prepare("INSERT INTO daily_schedules (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by) VALUES (?,?,?,?,0,0,1,'Generated from template',?)");
                                     $stmt->execute([$wid, $date_str, $template['start_time'], $template['end_time'], $user_id]);
                                     $total_created++;
                                 }
                             } else {
                                 if ($existing) {
-                                    $stmt = $db->prepare("UPDATE daily_schedules SET start_time=NULL, end_time=NULL, is_rest_day=1, is_active=1, notes='Rest day', updated_at=NOW() WHERE daily_schedule_id=?");
+                                    $stmt = $db->prepare("UPDATE daily_schedules SET start_time=NULL, end_time=NULL, is_rest_day=1, is_on_leave=0, is_active=1, notes='Rest day', updated_at=NOW() WHERE daily_schedule_id=?");
                                     $stmt->execute([$existing['daily_schedule_id']]);
                                     $total_updated++;
                                 } else {
-                                    $stmt = $db->prepare("INSERT INTO daily_schedules (worker_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes, created_by) VALUES (?,?,NULL,NULL,1,1,'Rest day',?)");
+                                    $stmt = $db->prepare("INSERT INTO daily_schedules (worker_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes, created_by) VALUES (?,?,NULL,NULL,1,0,1,'Rest day',?)");
                                     $stmt->execute([$wid, $date_str, $user_id]);
                                     $total_created++;
                                 }
@@ -740,7 +768,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($weekly) {
                         jsonSuccess('Weekly template found (no daily override)', $weekly);
                     } else {
-                        jsonSuccess('No schedule found', ['source' => 'none', 'is_rest_day' => true]);
+                        jsonSuccess('No schedule found', ['source' => 'none', 'is_rest_day' => true, 'is_on_leave' => 0]);
                     }
                 }
                 break;

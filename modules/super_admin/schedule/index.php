@@ -113,7 +113,7 @@ $month_start = sprintf('%04d-%02d-01', $filter_year, $filter_month);
 $month_end = sprintf('%04d-%02d-%02d', $filter_year, $filter_month, $days_in_month);
 
 foreach ($workers as $w) {
-    $stmt = $pdo->prepare("SELECT daily_schedule_id, schedule_date, start_time, end_time, is_rest_day, is_active, notes
+    $stmt = $pdo->prepare("SELECT daily_schedule_id, schedule_date, start_time, end_time, is_rest_day, is_on_leave, is_active, notes
                            FROM daily_schedules 
                            WHERE worker_id = ? AND schedule_date BETWEEN ? AND ?");
     $stmt->execute([$w['worker_id'], $month_start, $month_end]);
@@ -300,6 +300,18 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
     .m-chip.inactive { background: #f5f5f5; border-color: #e0e0e0; }
     .m-chip.inactive .m-time  { color: #757575; }
     .m-chip.inactive .m-hrs   { color: #9e9e9e; }
+
+    .m-chip.rest-chip {
+        background: #fce4ec;
+        border-color: #f8bbd0;
+    }
+    .m-chip.rest-chip .m-time { color: #c2185b; }
+
+    .m-chip.leave-chip {
+        background: #fff3e0;
+        border-color: #ffcc80;
+    }
+    .m-chip.leave-chip .m-time { color: #ef6c00; }
 
     .m-rest {
         color: #ccc;
@@ -491,6 +503,10 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                     <span style="color:#c62828;">Rest Day</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#fff3e0;border:1px solid #ffb74d;"></span>
+                    <span style="color:#ef6c00;">On Leave</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;">
                     <span style="color:#ccc;">—</span>
                     <span style="color:#999;">No Schedule</span>
                 </div>
@@ -560,7 +576,11 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                                     data-date="<?php echo $date_str; ?>"
                                     data-day-short="<?php echo $md['short']; ?>"
                                     onclick="cellClick(this, event)">
-                                    <?php if ($sched && $sched['is_rest_day']): ?>
+                                    <?php if ($sched && !empty($sched['is_on_leave'])): ?>
+                                        <div class="m-chip leave-chip" title="On Leave — Click to edit">
+                                            <span class="m-time" style="font-size:9px;">LEAVE</span>
+                                        </div>
+                                    <?php elseif ($sched && $sched['is_rest_day']): ?>
                                         <div class="m-chip rest-chip" title="Rest Day — Click to edit">
                                             <span class="m-time" style="font-size:9px;">REST</span>
                                         </div>
@@ -704,6 +724,7 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
         document.getElementById('day_start_time').value = '';
         document.getElementById('day_end_time').value = '';
         document.getElementById('day_is_rest_day').checked = false;
+        document.getElementById('day_is_on_leave').checked = false;
         document.getElementById('day_notes').value = '';
         document.getElementById('day_hours_display').textContent = '—';
         document.getElementById('dayDeleteBtn').style.display = 'none';
@@ -719,7 +740,11 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                         document.getElementById('dayDeleteBtn').setAttribute('data-id', d.daily_schedule_id);
                         if (d.is_rest_day == 1) {
                             document.getElementById('day_is_rest_day').checked = true;
-                        } else {
+                        }
+                        if (d.is_on_leave == 1) {
+                            document.getElementById('day_is_on_leave').checked = true;
+                        }
+                        if (d.is_rest_day != 1 && d.is_on_leave != 1) {
                             document.getElementById('day_start_time').value = d.start_time || '';
                             document.getElementById('day_end_time').value = d.end_time || '';
                         }
@@ -729,6 +754,7 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                         document.getElementById('day_end_time').value = d.end_time || '';
                     }
                     toggleRest();
+                    toggleLeave();
                     calcHours();
                 }
             });
@@ -740,15 +766,25 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
     
     function toggleRest() {
         var isRest = document.getElementById('day_is_rest_day').checked;
+        if (isRest) document.getElementById('day_is_on_leave').checked = false;
         document.getElementById('day_time_fields').style.display = isRest ? 'none' : 'grid';
         document.getElementById('day_hours_display').textContent = isRest ? 'Rest Day' : '—';
         if (!isRest) calcHours();
+    }
+
+    function toggleLeave() {
+        var isLeave = document.getElementById('day_is_on_leave').checked;
+        if (isLeave) document.getElementById('day_is_rest_day').checked = false;
+        document.getElementById('day_time_fields').style.display = isLeave ? 'none' : 'grid';
+        document.getElementById('day_hours_display').textContent = isLeave ? 'On Leave' : '—';
+        if (!isLeave) calcHours();
     }
 
     function calcHours() {
         var s = document.getElementById('day_start_time').value;
         var e = document.getElementById('day_end_time').value;
         var display = document.getElementById('day_hours_display');
+        if (document.getElementById('day_is_on_leave').checked) { display.textContent = 'On Leave'; return; }
         if (document.getElementById('day_is_rest_day').checked) { display.textContent = 'Rest Day'; return; }
         if (s && e) {
             var start = new Date('2000-01-01T' + s);
@@ -763,11 +799,12 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
         var workerId = document.getElementById('day_worker_id').value;
         var dateStr = document.getElementById('day_schedule_date').value;
         var isRestDay = document.getElementById('day_is_rest_day').checked ? 1 : 0;
+        var isOnLeave = document.getElementById('day_is_on_leave').checked ? 1 : 0;
         var startTime = document.getElementById('day_start_time').value;
         var endTime = document.getElementById('day_end_time').value;
         var notes = document.getElementById('day_notes').value;
 
-        if (!isRestDay && (!startTime || !endTime)) {
+        if (!isRestDay && !isOnLeave && (!startTime || !endTime)) {
             alert('Start time and end time are required for work days.');
             return;
         }
@@ -779,6 +816,7 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
         fd.append('start_time', startTime);
         fd.append('end_time', endTime);
         fd.append('is_rest_day', isRestDay);
+        fd.append('is_on_leave', isOnLeave);
         fd.append('notes', notes);
 
         var btn = document.getElementById('daySaveBtn');
@@ -859,6 +897,7 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
         document.getElementById('bulk_start_time').value = '';
         document.getElementById('bulk_end_time').value = '';
         document.getElementById('bulk_is_rest_day').checked = false;
+        document.getElementById('bulk_is_on_leave').checked = false;
         document.getElementById('bulk_notes').value = '';
         document.getElementById('bulk_hours_display').textContent = '—';
         toggleBulkRest();
@@ -870,15 +909,25 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
 
     function toggleBulkRest() {
         var isRest = document.getElementById('bulk_is_rest_day').checked;
+        if (isRest) document.getElementById('bulk_is_on_leave').checked = false;
         document.getElementById('bulk_time_fields').style.display = isRest ? 'none' : 'grid';
         document.getElementById('bulk_hours_display').textContent = isRest ? 'Rest Day' : '—';
         if (!isRest) calcBulkHours();
+    }
+
+    function toggleBulkLeave() {
+        var isLeave = document.getElementById('bulk_is_on_leave').checked;
+        if (isLeave) document.getElementById('bulk_is_rest_day').checked = false;
+        document.getElementById('bulk_time_fields').style.display = isLeave ? 'none' : 'grid';
+        document.getElementById('bulk_hours_display').textContent = isLeave ? 'On Leave' : '—';
+        if (!isLeave) calcBulkHours();
     }
 
     function calcBulkHours() {
         var s = document.getElementById('bulk_start_time').value;
         var e = document.getElementById('bulk_end_time').value;
         var display = document.getElementById('bulk_hours_display');
+        if (document.getElementById('bulk_is_on_leave').checked) { display.textContent = 'On Leave'; return; }
         if (document.getElementById('bulk_is_rest_day').checked) { display.textContent = 'Rest Day'; return; }
         if (s && e) {
             var start = new Date('2000-01-01T' + s);
@@ -891,11 +940,12 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
 
     function saveBulk() {
         var isRestDay = document.getElementById('bulk_is_rest_day').checked ? 1 : 0;
+        var isOnLeave = document.getElementById('bulk_is_on_leave').checked ? 1 : 0;
         var startTime = document.getElementById('bulk_start_time').value;
         var endTime = document.getElementById('bulk_end_time').value;
         var notes = document.getElementById('bulk_notes').value;
 
-        if (!isRestDay && (!startTime || !endTime)) {
+        if (!isRestDay && !isOnLeave && (!startTime || !endTime)) {
             alert('Start time and end time are required for work days.');
             return;
         }
@@ -916,6 +966,7 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
         fd.append('start_time', startTime);
         fd.append('end_time', endTime);
         fd.append('is_rest_day', isRestDay);
+        fd.append('is_on_leave', isOnLeave);
         fd.append('notes', notes);
 
         fetch('/tracksite/api/schedule.php', { method: 'POST', body: fd })
@@ -1030,6 +1081,13 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                     <span>Rest Day (no work)</span>
                 </label>
             </div>
+
+            <div class="modal-form-group">
+                <label class="modal-toggle">
+                    <input type="checkbox" id="day_is_on_leave" onchange="toggleLeave()">
+                    <span>On Leave (no work)</span>
+                </label>
+            </div>
             
             <div id="day_time_fields" class="modal-form-row">
                 <div class="modal-form-group">
@@ -1078,6 +1136,13 @@ $baseQueryString = http_build_query(array_filter($queryParams, function($v) {
                 <label class="modal-toggle">
                     <input type="checkbox" id="bulk_is_rest_day" onchange="toggleBulkRest()">
                     <span>Rest Day (no work)</span>
+                </label>
+            </div>
+
+            <div class="modal-form-group">
+                <label class="modal-toggle">
+                    <input type="checkbox" id="bulk_is_on_leave" onchange="toggleBulkLeave()">
+                    <span>On Leave (no work)</span>
                 </label>
             </div>
             

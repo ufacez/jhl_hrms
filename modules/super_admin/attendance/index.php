@@ -48,6 +48,7 @@ $base_sql = "FROM attendance a
             AND ds.schedule_date = a.attendance_date
             AND ds.is_active = 1
             AND ds.is_rest_day = 0
+            AND ds.is_on_leave = 0
         LEFT JOIN schedules s ON s.worker_id = a.worker_id 
             AND s.day_of_week = {$day_of_week_expr}
             AND s.is_active = 1
